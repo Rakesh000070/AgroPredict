@@ -344,7 +344,11 @@ export default function App() {
         </nav>
 
         <div className="mt-auto pt-6 border-t border-white/10">
-          <SidebarLink icon={<HelpCircle size={18} />} label="Support" />
+          <SidebarLink 
+            icon={<HelpCircle size={18} />} 
+            label="Support" 
+            onClick={() => window.open('https://agri.odisha.gov.in/en', '_blank')}
+          />
         </div>
       </aside>
 
