@@ -20,7 +20,31 @@ export interface PredictionInput {
   };
 }
 
+// Simple in-memory cache for predictions
+const predictionCache: Record<string, number> = {};
+
+const generateInputKey = (input: PredictionInput): string => {
+  return JSON.stringify({
+    y: input.Year,
+    d: input.District,
+    c: input.Crop,
+    s: input.Season,
+    st: input.Soil_Type,
+    v: input.Variety,
+    t: input.Temperature.toFixed(2),
+    r: input.Rainfall.toFixed(2),
+    n: input.N.toFixed(2),
+    p: input.P.toFixed(2),
+    k: input.K.toFixed(2)
+  });
+};
+
 export const predictYieldWithGemini = async (input: PredictionInput): Promise<number> => {
+  const cacheKey = generateInputKey(input);
+  if (predictionCache[cacheKey] !== undefined) {
+    return predictionCache[cacheKey];
+  }
+
   const ai = new GoogleGenAI({ apiKey: API_KEY });
   
   const statsContext = input.Stats 
@@ -46,7 +70,8 @@ export const predictYieldWithGemini = async (input: PredictionInput): Promise<nu
     
     ${statsContext}
     
-    Based on historical data for Odisha and the provided context, provide a realistic yield prediction.
+    CRITICAL: Your prediction MUST be realistic and strictly aligned with the historical yield ranges for Odisha provided in the context. 
+    If the input parameters are similar to the historical averages, the yield should be close to those averages.
     Return ONLY a single numerical value representing the yield in tonnes per hectare.
   `;
 
@@ -65,10 +90,15 @@ export const predictYieldWithGemini = async (input: PredictionInput): Promise<nu
 
     const result = parseFloat(response.text.trim());
     if (isNaN(result)) throw new Error("Invalid prediction from Gemini");
+    
+    // Store in cache
+    predictionCache[cacheKey] = result;
     return result;
   } catch (error) {
     console.error("Gemini Prediction Error:", error);
-    // Fallback to a simple heuristic if Gemini fails
-    return 2.5 + (Math.random() * 2);
+    // Deterministic fallback based on inputs
+    const fallback = 2.5 + (Math.abs(input.Temperature + input.Rainfall) % 20) / 10;
+    predictionCache[cacheKey] = fallback;
+    return fallback;
   }
 };
