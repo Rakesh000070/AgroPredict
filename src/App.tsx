@@ -162,6 +162,23 @@ export default function App() {
     checkStatus();
   }, []);
 
+  const [stats, setStats] = useState<{ stateAvg: number, districtAvgs: Record<string, number>, totalRecords: number } | null>(null);
+
+  React.useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await fetch('/api/stats');
+        if (response.ok) {
+          const data = await response.json();
+          setStats(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch stats:", err);
+      }
+    };
+    fetchStats();
+  }, []);
+
   const calculateYield = async () => {
     setIsCalculating(true);
     setError(null);
@@ -622,7 +639,7 @@ export default function App() {
 
                   {/* Documentation Link */}
                   <a 
-                    href="https://xgboost.readthedocs.io/en/release_3.2.0/" 
+                    href="https://xgboost.readthedocs.io/en/stable/" 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="p-6 rounded-[2rem] border-2 border-dashed border-brand-navy/10 flex items-center justify-between group cursor-pointer hover:border-brand-teal/40 transition-colors"
@@ -782,29 +799,33 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-[2rem] shadow-dashboard border border-brand-navy/10">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-brand-navy/40 mb-2">Avg Prediction</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-brand-navy/40 mb-2">State Average</p>
                   <p className="text-3xl font-black text-brand-navy">
-                    {(history.reduce((acc, curr) => acc + curr.yield, 0) / (history.length || 1)).toFixed(2)}
+                    {stats?.stateAvg.toFixed(2) || '3.85'}
                   </p>
                   <p className="text-xs font-bold text-emerald-600 mt-1 flex items-center gap-1">
                     <ArrowUpRight size={12} />
-                    +12.5% vs last week
+                    Regional Baseline
                   </p>
                 </div>
                 <div className="bg-white p-6 rounded-[2rem] shadow-dashboard border border-brand-navy/10">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-brand-navy/40 mb-2">Model Accuracy</p>
-                  <p className="text-3xl font-black text-brand-navy">94.2%</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-brand-navy/40 mb-2">District Average</p>
+                  <p className="text-3xl font-black text-brand-navy">
+                    {stats?.districtAvgs[inputs.district]?.toFixed(2) || '4.10'}
+                  </p>
                   <p className="text-xs font-bold text-brand-blue mt-1 flex items-center gap-1">
                     <CheckCircle2 size={12} />
-                    High Reliability
+                    Local Context
                   </p>
                 </div>
                 <div className="bg-white p-6 rounded-[2rem] shadow-dashboard border border-brand-navy/10">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-brand-navy/40 mb-2">Data Points</p>
-                  <p className="text-3xl font-black text-brand-navy">12,402</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-brand-navy/40 mb-2">Total Records</p>
+                  <p className="text-3xl font-black text-brand-navy">
+                    {stats?.totalRecords.toLocaleString() || '2,001'}
+                  </p>
                   <p className="text-xs font-bold text-brand-navy/40 mt-1 flex items-center gap-1">
                     <Database size={12} />
-                    Regional Dataset
+                    Odisha Dataset
                   </p>
                 </div>
               </div>

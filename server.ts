@@ -85,7 +85,7 @@ async function startServer() {
       return res.status(404).json({ error: "Dataset not found" });
     }
     const data = fs.readFileSync(csvPath, "utf8");
-    const lines = data.split("\n").filter(l => l.trim().length > 0);
+    const lines = data.split(/\r?\n/).filter(l => l.trim().length > 0);
     if (lines.length <= 1) return res.status(404).json({ error: "Dataset is empty" });
     
     const headers = lines[0].split(",").map(h => h.trim());
@@ -117,13 +117,15 @@ async function startServer() {
     const varietyIdx = headers.indexOf('Variety');
     const varietiesByCrop: Record<string, Set<string>> = {};
     
-    for (let i = 1; i < lines.length; i++) {
-      const row = lines[i].split(",").map(v => v.trim());
-      const cropVal = row[cropIdx];
-      const varietyVal = row[varietyIdx];
-      if (cropVal && varietyVal) {
-        if (!varietiesByCrop[cropVal]) varietiesByCrop[cropVal] = new Set();
-        varietiesByCrop[cropVal].add(varietyVal);
+    if (cropIdx !== -1 && varietyIdx !== -1) {
+      for (let i = 1; i < lines.length; i++) {
+        const row = lines[i].split(",").map(v => v.trim());
+        const cropVal = row[cropIdx];
+        const varietyVal = row[varietyIdx];
+        if (cropVal && varietyVal) {
+          if (!varietiesByCrop[cropVal]) varietiesByCrop[cropVal] = new Set();
+          varietiesByCrop[cropVal].add(varietyVal);
+        }
       }
     }
     
@@ -135,6 +137,56 @@ async function startServer() {
     res.json(result);
   });
 
+  // API Route to get basic statistics from the dataset
+  app.get("/api/stats", (req, res) => {
+    const csvPath = "odisha_realistic_dataset-1.csv";
+    if (!fs.existsSync(csvPath)) {
+      return res.status(404).json({ error: "Dataset not found" });
+    }
+    const data = fs.readFileSync(csvPath, "utf8");
+    const lines = data.split(/\r?\n/).filter(l => l.trim().length > 0);
+    if (lines.length <= 1) return res.status(404).json({ error: "Dataset is empty" });
+    
+    const headers = lines[0].split(",").map(h => h.trim());
+    const yieldIdx = headers.indexOf('Yield');
+    const districtIdx = headers.indexOf('District');
+    
+    if (yieldIdx === -1) return res.status(500).json({ error: "Yield column not found" });
+    
+    let totalYield = 0;
+    let count = 0;
+    const districtYields: Record<string, { sum: number, count: number }> = {};
+    
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i].split(",").map(v => v.trim());
+      const yieldVal = parseFloat(row[yieldIdx]);
+      const districtVal = row[districtIdx];
+      
+      if (!isNaN(yieldVal)) {
+        totalYield += yieldVal;
+        count++;
+        
+        if (districtVal) {
+          if (!districtYields[districtVal]) districtYields[districtVal] = { sum: 0, count: 0 };
+          districtYields[districtVal].sum += yieldVal;
+          districtYields[districtVal].count++;
+        }
+      }
+    }
+    
+    const stateAvg = totalYield / count;
+    const districtAvgs: Record<string, number> = {};
+    for (const d in districtYields) {
+      districtAvgs[d] = districtYields[d].sum / districtYields[d].count;
+    }
+    
+    res.json({
+      stateAvg,
+      districtAvgs,
+      totalRecords: count
+    });
+  });
+
   // API Route to get a random sample from the dataset
   app.get("/api/sample", (req, res) => {
     const csvPath = "odisha_realistic_dataset-1.csv";
@@ -142,7 +194,7 @@ async function startServer() {
       return res.status(404).json({ error: "Dataset not found" });
     }
     const data = fs.readFileSync(csvPath, "utf8");
-    const lines = data.split("\n").filter(l => l.trim().length > 0);
+    const lines = data.split(/\r?\n/).filter(l => l.trim().length > 0);
     if (lines.length <= 1) return res.status(404).json({ error: "Dataset is empty" });
     
     const headers = lines[0].split(",").map(h => h.trim());
@@ -151,7 +203,9 @@ async function startServer() {
     
     const result: any = {};
     headers.forEach((h, i) => {
-      result[h] = row[i];
+      if (row[i] !== undefined) {
+        result[h] = row[i];
+      }
     });
     
     res.json(result);
