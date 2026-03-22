@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { API_BASE_URL } from "../config";
 
 const API_KEY = process.env.GEMINI_API_KEY || '';
 
@@ -98,13 +99,18 @@ export const predictYieldWithGemini = async (input: PredictionInput): Promise<nu
     console.error("Gemini Prediction Error:", error);
     // Fallback to backend ML model
     try {
-      const response = await fetch('/api/predict', {
+      const response = await fetch(`${API_BASE_URL}/api/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input)
       });
       if (response.ok) {
-        const data = await response.json();
+        let data;
+        try {
+          data = await response.json();
+        } catch (e) {
+          throw new Error('Invalid response from server. Please check your backend connection.');
+        }
         if (data.yield !== undefined) {
           predictionCache[cacheKey] = data.yield;
           return data.yield;

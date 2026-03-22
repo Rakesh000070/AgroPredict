@@ -7,6 +7,7 @@ import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import cors from "cors";
 
 const JWT_SECRET = process.env.JWT_SECRET || "crop-yield-secret-key";
 
@@ -34,6 +35,7 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(cors());
   app.use(express.json());
 
   // --- Auth APIs ---

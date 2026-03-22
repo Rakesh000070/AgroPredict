@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { API_BASE_URL } from '../config';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -36,12 +37,19 @@ export const LoginPage: React.FC<AuthProps> = ({ onLogin, onSwitchToRegister, on
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(`${API_BASE_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error('Invalid response from server. Please check your backend connection.');
+      }
+      
       if (!res.ok) throw new Error(data.error || 'Login failed');
       onLogin(data.user, data.token);
     } catch (err: any) {
@@ -157,12 +165,19 @@ export const RegisterPage: React.FC<AuthProps> = ({ onSwitchToLogin }) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/register', {
+      const res = await fetch(`${API_BASE_URL}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error('Invalid response from server. Please check your backend connection.');
+      }
+      
       if (!res.ok) throw new Error(data.error || 'Registration failed');
       setSuccess(true);
       setTimeout(() => onSwitchToLogin(), 2000);
@@ -308,12 +323,19 @@ export const OTPLoginPage: React.FC<AuthProps> = ({ onLogin, onSwitchToLogin }) 
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/send-otp', {
+      const res = await fetch(`${API_BASE_URL}/api/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone }),
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error('Invalid response from server. Please check your backend connection.');
+      }
+      
       if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
       setStep(2);
     } catch (err: any) {
@@ -328,12 +350,19 @@ export const OTPLoginPage: React.FC<AuthProps> = ({ onLogin, onSwitchToLogin }) 
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/verify-otp', {
+      const res = await fetch(`${API_BASE_URL}/api/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, otp }),
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error('Invalid response from server. Please check your backend connection.');
+      }
+      
       if (!res.ok) throw new Error(data.error || 'Invalid OTP');
       onLogin(data.user, data.token);
     } catch (err: any) {
