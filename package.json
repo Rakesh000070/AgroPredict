@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "start": "node --experimental-strip-types server.ts",
     "build": "vite build",
     "netlify": "vite build",
     "preview": "vite preview",

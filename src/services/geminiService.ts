@@ -96,7 +96,25 @@ export const predictYieldWithGemini = async (input: PredictionInput): Promise<nu
     return result;
   } catch (error) {
     console.error("Gemini Prediction Error:", error);
-    // Deterministic fallback based on inputs
+    // Fallback to backend ML model
+    try {
+      const response = await fetch('/api/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input)
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.yield !== undefined) {
+          predictionCache[cacheKey] = data.yield;
+          return data.yield;
+        }
+      }
+    } catch (backendError) {
+      console.error("Backend Prediction Error:", backendError);
+    }
+    
+    // Deterministic fallback based on inputs if both fail
     const fallback = 2.5 + (Math.abs(input.Temperature + input.Rainfall) % 20) / 10;
     predictionCache[cacheKey] = fallback;
     return fallback;
