@@ -3,12 +3,116 @@ import { createServer as createViteServer } from "vite";
 import { exec, spawn } from "child_process";
 import path from "path";
 import fs from "fs";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "crop-yield-secret-key";
 
 async function startServer() {
+  const db_auth = await open({
+    filename: './database.sqlite',
+    driver: sqlite3.Database
+  });
+
+  await db_auth.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE,
+      email TEXT UNIQUE,
+      password TEXT,
+      phone TEXT UNIQUE
+    );
+    CREATE TABLE IF NOT EXISTS otps (
+      phone TEXT PRIMARY KEY,
+      otp TEXT,
+      expiry INTEGER
+    );
+  `);
+
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
+
+  // --- Auth APIs ---
+  app.post("/api/register", async (req, res) => {
+    const { username, email, password, phone } = req.body;
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await db_auth.run(
+        "INSERT INTO users (username, email, password, phone) VALUES (?, ?, ?, ?)",
+        [username, email, hashedPassword, phone]
+      );
+      res.json({ message: "User registered successfully" });
+    } catch (err: any) {
+      if (err.message.includes("UNIQUE constraint failed")) {
+        res.status(400).json({ error: "Username, email or phone already exists" });
+      } else {
+        res.status(500).json({ error: "Registration failed" });
+      }
+    }
+  });
+
+  app.post("/api/login", async (req, res) => {
+    const { username, password } = req.body;
+    try {
+      const user = await db_auth.get("SELECT * FROM users WHERE username = ?", [username]);
+      if (!user || !(await bcrypt.compare(password, user.password))) {
+        return res.status(401).json({ error: "Invalid username or password" });
+      }
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "24h" });
+      res.json({ token, user: { id: user.id, username: user.username, email: user.email } });
+    } catch (err) {
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  app.post("/api/send-otp", async (req, res) => {
+    const { phone } = req.body;
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = Date.now() + 5 * 60 * 1000; // 5 minutes
+    try {
+      await db_auth.run(
+        "INSERT OR REPLACE INTO otps (phone, otp, expiry) VALUES (?, ?, ?)",
+        [phone, otp, expiry]
+      );
+      console.log(`[OTP Simulation] Phone: ${phone}, OTP: ${otp}`);
+      res.json({ message: "OTP sent successfully (Simulated)" });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to send OTP" });
+    }
+  });
+
+  app.post("/api/verify-otp", async (req, res) => {
+    const { phone, otp } = req.body;
+    try {
+      const record = await db_auth.get("SELECT * FROM otps WHERE phone = ?", [phone]);
+      if (!record || record.otp !== otp || record.expiry < Date.now()) {
+        return res.status(401).json({ error: "Invalid or expired OTP" });
+      }
+      
+      let user = await db_auth.get("SELECT * FROM users WHERE phone = ?", [phone]);
+      if (!user) {
+        // Auto-register if phone exists in OTP but not in users (optional, but let's require registration first for this demo)
+        return res.status(404).json({ error: "User not found. Please register first." });
+      }
+
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "24h" });
+      await db_auth.run("DELETE FROM otps WHERE phone = ?", [phone]);
+      res.json({ token, user: { id: user.id, username: user.username, email: user.email } });
+    } catch (err) {
+      res.status(500).json({ error: "OTP verification failed" });
+    }
+  });
+
+  // API Route to check python health
+  app.get("/api/python-health", (req, res) => {
+    exec("python3 --version && python3 -m pip list", (error, stdout, stderr) => {
+      res.json({ error, stdout, stderr });
+    });
+  });
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", uptime: process.uptime() });
@@ -69,7 +173,7 @@ async function startServer() {
 
   // API Route to train model
   app.post("/api/train", (req, res) => {
-    exec("python3 -m pip install pandas numpy xgboost scikit-learn joblib && python3 model.py", (error, stdout, stderr) => {
+    exec("python3 model.py", (error, stdout, stderr) => {
       if (error) {
         console.error("Train error:", stderr);
         return res.status(500).json({ error: "Training failed", details: stderr });
@@ -80,7 +184,7 @@ async function startServer() {
 
   // API Route to get unique values from the dataset
   app.get("/api/uniques", (req, res) => {
-    const csvPath = "odisha_realistic_dataset-1.csv";
+    const csvPath = path.join(process.cwd(), "public", "odisha_realistic_dataset-1.csv");
     if (!fs.existsSync(csvPath)) {
       return res.status(404).json({ error: "Dataset not found" });
     }
@@ -139,7 +243,7 @@ async function startServer() {
 
   // API Route to get basic statistics from the dataset
   app.get("/api/stats", (req, res) => {
-    const csvPath = "odisha_realistic_dataset-1.csv";
+    const csvPath = path.join(process.cwd(), "public", "odisha_realistic_dataset-1.csv");
     if (!fs.existsSync(csvPath)) {
       return res.status(404).json({ error: "Dataset not found" });
     }
@@ -189,7 +293,7 @@ async function startServer() {
 
   // API Route to get a random sample from the dataset
   app.get("/api/sample", (req, res) => {
-    const csvPath = "odisha_realistic_dataset-1.csv";
+    const csvPath = path.join(process.cwd(), "public", "odisha_realistic_dataset-1.csv");
     if (!fs.existsSync(csvPath)) {
       return res.status(404).json({ error: "Dataset not found" });
     }
@@ -214,7 +318,7 @@ async function startServer() {
   // Auto-train on startup if missing
   if (!fs.existsSync("model.pkl") || !fs.existsSync("features.pkl")) {
     console.log("Model files missing. Attempting to train model...");
-    exec("python3 -m pip install pandas numpy xgboost scikit-learn joblib && python3 model.py", (error, stdout, stderr) => {
+    exec("python3 model.py", (error, stdout, stderr) => {
       if (error) {
         console.error("Auto-train failed:", stderr);
       } else {

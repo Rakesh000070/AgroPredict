@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LineChart, 
@@ -40,13 +40,15 @@ import {
   CheckCircle2,
   Download,
   Loader2,
-  Cpu
+  Cpu,
+  LogOut
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 import { fetchDatasetData } from './services/dataService';
 import { predictYieldWithGemini } from './services/geminiService';
+import { LoginPage, RegisterPage, OTPLoginPage } from './components/Auth';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -84,36 +86,121 @@ const SOILS = ["Clay", "Loamy", "Sandy"];
 const DISTRICTS = ["Angul", "Balangir", "Cuttack", "Ganjam", "Kalahandi", "Khordha", "Koraput", "Mayurbhanj", "Puri", "Sambalpur"];
 
 export default function App() {
+  const [user, setUser] = useState<any>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [authView, setAuthView] = useState<'login' | 'register' | 'otp'>('login');
   const [view, setView] = useState<'dashboard' | 'history' | 'analytics' | 'settings'>('dashboard');
-  const [inputs, setInputs] = useState<PredictionInputs>({
-    year: 2023,
-    district: "Khordha",
-    crop: "Rice",
-    variety: "Variety_A",
-    season: "Kharif",
-    soilType: "Loamy",
-    temperature: 28,
-    humidity: 75,
-    rainfall: 1200,
-    n: 80,
-    p: 40,
-    k: 40,
-    fertilizer: 150,
-    pesticide: 2,
-    irrigation: 500,
-    pestIndex: 0.1,
+
+  useEffect(() => {
+    const savedToken = localStorage.getItem('auth_token');
+    const savedUser = localStorage.getItem('auth_user');
+    if (savedToken && savedUser) {
+      setToken(savedToken);
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
+  const handleLogin = (userData: any, userToken: string) => {
+    setUser(userData);
+    setToken(userToken);
+    localStorage.setItem('auth_token', userToken);
+    localStorage.setItem('auth_user', JSON.stringify(userData));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+  };
+
+  const [inputs, setInputs] = useState<PredictionInputs>(() => {
+    try {
+      const saved = localStorage.getItem("crop_prediction_inputs");
+      return saved ? JSON.parse(saved) : {
+        year: 2023,
+        district: "Khordha",
+        crop: "Rice",
+        variety: "Variety_A",
+        season: "Kharif",
+        soilType: "Loamy",
+        temperature: 28,
+        humidity: 75,
+        rainfall: 1200,
+        n: 80,
+        p: 40,
+        k: 40,
+        fertilizer: 150,
+        pesticide: 2,
+        irrigation: 500,
+        pestIndex: 0.1,
+      };
+    } catch (e) {
+      return {
+        year: 2023,
+        district: "Khordha",
+        crop: "Rice",
+        variety: "Variety_A",
+        season: "Kharif",
+        soilType: "Loamy",
+        temperature: 28,
+        humidity: 75,
+        rainfall: 1200,
+        n: 80,
+        p: 40,
+        k: 40,
+        fertilizer: 150,
+        pesticide: 2,
+        irrigation: 500,
+        pestIndex: 0.1,
+      };
+    }
   });
 
   const [prediction, setPrediction] = useState<{ yield: number, confidence: number, variance: number } | null>(null);
   const [actualYield, setActualYield] = useState<number | null>(null);
-  const [history, setHistory] = useState<{ date: string, crop: string, yield: number }[]>([]);
+  const [history, setHistory] = useState<{ date: string, crop: string, yield: number }[]>(() => {
+    try {
+      const saved = localStorage.getItem("crop_prediction_history");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [isCalculating, setIsCalculating] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [systemStatus, setSystemStatus] = useState<'checking' | 'ready' | 'missing-model'>('ready');
   const [isServerless, setIsServerless] = useState(true);
-  const [stats, setStats] = useState<{ stateAvg: number, districtAvgs: Record<string, number>, totalRecords: number } | null>(null);
+  const [stats, setStats] = useState<{ stateAvg: number, districtAvgs: Record<string, number>, totalRecords: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem("crop_prediction_stats");
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [rawData, setRawData] = useState<any[]>([]);
+
+  // Persistence Effects
+  React.useEffect(() => {
+    localStorage.setItem("crop_prediction_inputs", JSON.stringify(inputs));
+  }, [inputs]);
+
+  React.useEffect(() => {
+    localStorage.setItem("crop_prediction_history", JSON.stringify(history));
+  }, [history]);
+
+  React.useEffect(() => {
+    if (stats) {
+      localStorage.setItem("crop_prediction_stats", JSON.stringify(stats));
+    }
+  }, [stats]);
+
+  const clearHistory = () => {
+    setHistory([]);
+    localStorage.removeItem("crop_prediction_history");
+  };
 
   // Dynamic options from dataset
   const [options, setOptions] = useState<{
@@ -122,13 +209,30 @@ export default function App() {
     seasons: string[];
     soilTypes: string[];
     varietiesByCrop: Record<string, string[]>;
-  }>({
-    crops: CROPS,
-    districts: DISTRICTS,
-    seasons: SEASONS,
-    soilTypes: SOILS,
-    varietiesByCrop: VARIETIES
+  }>(() => {
+    try {
+      const saved = localStorage.getItem("crop_prediction_options");
+      return saved ? JSON.parse(saved) : {
+        crops: CROPS,
+        districts: DISTRICTS,
+        seasons: SEASONS,
+        soilTypes: SOILS,
+        varietiesByCrop: VARIETIES
+      };
+    } catch (e) {
+      return {
+        crops: CROPS,
+        districts: DISTRICTS,
+        seasons: SEASONS,
+        soilTypes: SOILS,
+        varietiesByCrop: VARIETIES
+      };
+    }
   });
+
+  React.useEffect(() => {
+    localStorage.setItem("crop_prediction_options", JSON.stringify(options));
+  }, [options]);
 
   React.useEffect(() => {
     const initData = async () => {
@@ -145,15 +249,20 @@ export default function App() {
         setRawData(rawData);
         setSystemStatus('ready');
         
-        // Set initial values if not set
-        setInputs(prev => ({
-          ...prev,
-          district: options.District[0] || prev.district,
-          crop: options.Crop[0] || prev.crop,
-          season: options.Season[0] || prev.season,
-          soilType: options.Soil_Type[0] || prev.soilType,
-          variety: options.VarietiesByCrop[options.Crop[0]]?.[0] || prev.variety
-        }));
+        // Set initial values from dataset only if not already restored from localStorage
+        setInputs(prev => {
+          const hasSaved = localStorage.getItem("crop_prediction_inputs");
+          if (hasSaved) return prev; // Keep restored values
+          
+          return {
+            ...prev,
+            district: options.District[0] || prev.district,
+            crop: options.Crop[0] || prev.crop,
+            season: options.Season[0] || prev.season,
+            soilType: options.Soil_Type[0] || prev.soilType,
+            variety: options.VarietiesByCrop[options.Crop[0]]?.[0] || prev.variety
+          };
+        });
       } catch (err) {
         console.error("Failed to fetch dataset data:", err);
         // Fallback to existing logic if needed, but frontend parsing is more reliable for Netlify
@@ -378,6 +487,40 @@ Generated by AgroPredict Odisha Engine
     { name: 'Pest Pressure', value: inputs.pestIndex * 100, max: 100, color: 'bg-red-500' },
   ], [inputs]);
 
+  if (!user) {
+    return (
+      <AnimatePresence mode="wait">
+        {authView === 'login' && (
+          <LoginPage 
+            key="login"
+            onLogin={handleLogin} 
+            onSwitchToRegister={() => setAuthView('register')} 
+            onSwitchToOTP={() => setAuthView('otp')}
+            onSwitchToLogin={() => setAuthView('login')}
+          />
+        )}
+        {authView === 'register' && (
+          <RegisterPage 
+            key="register"
+            onLogin={handleLogin} 
+            onSwitchToLogin={() => setAuthView('login')} 
+            onSwitchToRegister={() => setAuthView('register')}
+            onSwitchToOTP={() => setAuthView('otp')}
+          />
+        )}
+        {authView === 'otp' && (
+          <OTPLoginPage 
+            key="otp"
+            onLogin={handleLogin} 
+            onSwitchToLogin={() => setAuthView('login')} 
+            onSwitchToRegister={() => setAuthView('register')}
+            onSwitchToOTP={() => setAuthView('otp')}
+          />
+        )}
+      </AnimatePresence>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-brand-light font-sans selection:bg-brand-teal/20">
       {/* Sidebar - Desktop */}
@@ -416,12 +559,19 @@ Generated by AgroPredict Odisha Engine
           />
         </nav>
 
-        <div className="mt-auto pt-6 border-t border-white/10">
+        <div className="mt-auto pt-6 border-t border-white/10 space-y-2">
           <SidebarLink 
             icon={<HelpCircle size={18} />} 
             label="Support" 
             onClick={() => window.open('https://agri.odisha.gov.in/en', '_blank')}
           />
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-red-400 hover:text-red-300 hover:bg-white/10"
+          >
+            <LogOut size={18} />
+            <span className="text-sm font-semibold">Logout</span>
+          </button>
         </div>
       </aside>
 
@@ -451,11 +601,11 @@ Generated by AgroPredict Odisha Engine
             </div>
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
-                <p className="text-xs font-bold text-brand-navy/60 uppercase tracking-widest">Current Session</p>
-                <p className="text-sm font-semibold text-brand-navy">{new Date().toLocaleDateString()}</p>
+                <p className="text-xs font-bold text-brand-navy/60 uppercase tracking-widest">Logged in as</p>
+                <p className="text-sm font-semibold text-brand-navy">{user.username}</p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-brand-teal/10 border border-brand-teal/20 flex items-center justify-center text-brand-teal font-bold">
-                SS
+              <div className="w-10 h-10 rounded-full bg-brand-teal/10 border border-brand-teal/20 flex items-center justify-center text-brand-teal font-bold uppercase">
+                {user.username.substring(0, 2)}
               </div>
             </div>
           </div>
@@ -806,7 +956,21 @@ Generated by AgroPredict Odisha Engine
 
           {view === 'history' && (
             <div className="xl:col-span-12 space-y-8">
-              <DashboardCard title="Full Prediction Logs" icon={<History size={16} />}>
+              <DashboardCard 
+                title="Full Prediction Logs" 
+                icon={<History size={16} />}
+                extra={
+                  history.length > 0 && (
+                    <button 
+                      onClick={clearHistory}
+                      className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 transition-colors flex items-center gap-1"
+                    >
+                      <Trash2 size={12} />
+                      Clear All
+                    </button>
+                  )
+                }
+              >
                 {history.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
@@ -1037,11 +1201,23 @@ Generated by AgroPredict Odisha Engine
                     <button 
                       onClick={() => {
                         setHistory([]);
+                        localStorage.removeItem("crop_prediction_history");
                       }}
                       className="w-full py-4 bg-red-50 text-red-600 border border-red-100 rounded-2xl font-bold text-sm hover:bg-red-100 transition-all flex items-center justify-center gap-3"
                     >
                       <Trash2 size={18} />
                       Clear All History
+                    </button>
+
+                    <button 
+                      onClick={() => {
+                        localStorage.clear();
+                        window.location.reload();
+                      }}
+                      className="w-full py-4 bg-brand-navy text-white rounded-2xl font-bold text-sm hover:bg-brand-navy/90 transition-all flex items-center justify-center gap-3"
+                    >
+                      <RefreshCw size={18} />
+                      Reset All System Data
                     </button>
                   </div>
                 </DashboardCard>
@@ -1083,12 +1259,15 @@ function SidebarLink({ icon, label, active = false, onClick }: { icon: React.Rea
   );
 }
 
-function DashboardCard({ title, icon, children }: { title: string, icon: React.ReactNode, children: React.ReactNode }) {
+function DashboardCard({ title, icon, children, extra }: { title: string, icon: React.ReactNode, children: React.ReactNode, extra?: React.ReactNode }) {
   return (
     <section className="bg-white p-6 rounded-[2rem] shadow-dashboard border border-brand-navy/10 hover:shadow-dashboard-hover transition-all duration-300">
-      <div className="flex items-center gap-2 mb-6 text-brand-navy/60">
-        {icon}
-        <h2 className="text-[11px] font-black uppercase tracking-[0.2em]">{title}</h2>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2 text-brand-navy/60">
+          {icon}
+          <h2 className="text-[11px] font-black uppercase tracking-[0.2em]">{title}</h2>
+        </div>
+        {extra}
       </div>
       {children}
     </section>
